@@ -1,9 +1,12 @@
 from email.message import EmailMessage
 import aiosmtplib
-
+import jwt
+import datetime
 
 sender = "tommy5065@qq.com"
 password = "nuojqwwktucqdfgj"
+secret_key = "hcuisdhfcudshfsdcnoiyhf"
+algorithm = "HS256"
 
 
 async def sendEmail(recipents: str):
@@ -25,6 +28,31 @@ async def sendEmail(recipents: str):
         return True
     except Exception as e:
         raise e
+
+
+async def generateToken(useranme: str):
+    expire_time_object = datetime.datetime.now() + datetime.timedelta(weeks=1)
+    exp = int(expire_time_object.timestamp())
+    payload = {"username": useranme, "exp": exp}
+    token = jwt.encode(payload, secret_key, algorithm)
+
+    if isinstance(token, bytes):  # 转换token编码
+        token = token.decode("utf-8")
+        return token
+    return token
+
+
+async def validToken(token: str):
+    try:
+        token_data = jwt.decode(token, secret_key, algorithm)
+        if token_data:
+            username = token_data.get(token_data)
+            if username is None:
+                raise ValueError("无效用户")
+            return username
+    except Exception as e:
+        print(e)
+        raise ValueError("无效凭证")
 
 
 # 使用asynic.run报：
