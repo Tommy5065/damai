@@ -6,7 +6,7 @@ from util import sendEmail
 # 异步连接数据库封装在一个类里，不用重复写连接池了
 class UserMysql(object):
     @classmethod
-    async def init(self):
+    async def init(cls):
         self = UserMysql()
         pool = await aiomysql.create_pool(
             host="localhost",
