@@ -11,3 +11,5 @@ wheels/
 .vscode
 consul.exe
 uv.lock
+test_logger.log
+.python-version
