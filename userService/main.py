@@ -3,17 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2AuthorizationCodeBearer
 from passlib.hash import pbkdf2_sha256
 from typing import Annotated
+import asyncio
 from util import generateToken, validToken, logger
 from .schema import Register, Login, Token
 from data_base import (
     UserMysql,
     RedisManager,
     registerMysqlUserSendEmail,
-    getMysqlUser,
-    getDataRedis,
-    createCache,
-    updateMysqlUser,
-    deleteCache,
 )
 
 
@@ -34,7 +30,7 @@ async def register(data: Register, tags=["user"]):
 
     userMySql = await UserMysql.init()
 
-    name_exist = await getMysqlUser(
+    name_exist = await UserMysql.getMysqlUser(
         connObject=userMySql,
         sql=("select user_name from usertable where user_name=%s"),
         param=(data.username,),
@@ -66,7 +62,7 @@ async def login(data: Login, tags=["user"]):
     """用户登录"""
     # 异步连接数据库，查询密码是否正确，用户名是否存在等
     userMySql = await UserMysql.init()
-    mysql_password_id = await getMysqlUser(
+    mysql_password_id = await UserMysql.getMysqlUser(
         connObject=userMySql,
         sql=("select password,user_id from usertable where user_name=%s"),
         param=(data.username),
@@ -97,20 +93,20 @@ async def checkInfo(access_token: str = Depends(token)):
     # 缓存命中
     logger.debug(f"{userID}号用户查询信息")
     redis = await RedisManager.init(db=0)
-    cache = await getDataRedis(redis, key=f"userservice:{userID}")
+    cache = await RedisManager.getDataRedis(redis, key=f"userservice:{userID}")
     if cache:
         return {"status": status.HTTP_200_OK, "message": "获取成功", "data": f"{cache}"}
     # 缓存未命中写入缓存
 
     logger.warning("数据未缓存,访问数据库")
     userMySql = await UserMysql.init()
-    detail_data = await getMysqlUser(
+    detail_data = await UserMysql.getMysqlUser(
         connObject=userMySql,
         sql=("select user_name,user_email from usertable where user_id=%s"),
         param=(userID),
     )
     user_name, email = detail_data[0][0], detail_data[0][1]
-    createcache = await createCache(
+    createcache = await RedisManager.createCache(
         redis, f"userservice:{userID}", map={"username": user_name, "email": email}
     )
     return {"username": user_name, "email": email}
@@ -128,27 +124,21 @@ async def updateData(
 
     # 1修改普通信息
     userID = await validToken(access_token)
-    # 1.1 用户名是否已存在
-    userMysql1 = await UserMysql.init()
-    name_exist = await getMysqlUser(
-        connObject=userMysql1,
-        sql=("select user_name from usertable where user_name=%s"),
-        param=(username,),
-    )
-    if name_exist:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="username has exist."
-        )
+    # 1.1 先删缓存
+    redis = await RedisManager.init(db=0)
+    await RedisManager.deleteCache(redis, f"userservice:{userID}")
 
-    # 因为上一个查询用户的连接已经关闭了，需要重新连接数据库
+    # 更新数据库
     userMysql = await UserMysql.init()
-    update_data = await updateMysqlUser(
+    update_data = await UserMysql.updateMysqlUser(
         userMysql,
         sql=("update usertable set user_name=%s,user_email=%s where user_id=%s"),
         param=(username, useremail, userID),
     )
+    if not update_data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="姓名重复")
 
-    # 删除缓存
-    redis = await RedisManager.init(db=0)
-    await deleteCache(redis, f"userservice:{userID}")
+    # 再次删除缓存,延迟双删
+    await asyncio.sleep(100)
+    await RedisManager.deleteCache(redis, f"userservice:{userID}")
     return {"message": "更新成功并删除缓存"}
