@@ -1,20 +1,20 @@
 import aiomysql
 import asyncio
 import redis
-from util import sendEmail
+from util import sendEmail, logger
 
 
 # 异步连接数据库封装在一个类里，不用重复写连接池了
-class UserMysql(object):
+class MysqlManager(object):
     @classmethod
-    async def init(cls) -> object:
+    async def init(cls, dbname) -> object:
         self = cls()
         pool = await aiomysql.create_pool(
             host="localhost",
             port=3306,
             user="root",
             password="123456",
-            db="userservice",
+            db=dbname,
             minsize=1,
             maxsize=10,
         )
@@ -25,45 +25,48 @@ class UserMysql(object):
         self.cursor = cursor
         return self
 
+    @staticmethod
+    async def getMysqlUser(connObject: object, sql: str, param: tuple) -> tuple:
+        try:
+            logger.debug(f"开始查询{param}")
+            await connObject.cursor.execute(sql, param)
+            return await connObject.cursor.fetchall()
 
-async def getMysqlUser(connObject: object, sql: str, param: tuple) -> tuple:
-    try:
-        await connObject.cursor.execute(sql, param)
-        return await connObject.cursor.fetchall()
+        except aiomysql.MySQLError as e:
+            logger.error(e)
 
-    except aiomysql.MySQLError as e:
-        print(e)
+    @staticmethod
+    async def registerMysqlUser(connObject: object, sql: str, param: tuple) -> tuple:
+        try:
+            await connObject.cursor.execute(sql, param)
+            await connObject.conn.commit()
+            return True
+        except aiomysql.MySQLError as e:
+            await connObject.conn.rollback()
+            logger.error(e)
 
-    finally:
-        await connObject.cursor.close()
-        connObject.pool.close()
-        await connObject.pool.wait_closed()
 
-
-async def registerMysqlUser(connObject: object, sql: str, param: tuple) -> tuple:
+@staticmethod
+async def updateMysqlUser(connObject: object, sql: str, param: tuple) -> tuple:
     try:
         await connObject.cursor.execute(sql, param)
         await connObject.conn.commit()
         return True
     except aiomysql.MySQLError as e:
         await connObject.conn.rollback()
-        print(e)
-
-    finally:
-        await connObject.cursor.close()
-        connObject.pool.close()
-        await connObject.pool.wait_closed()
+        logger.error(e)
+        return False
 
 
 async def registerMysqlUserSendEmail(
     connObject: object, sql: str, email: str, param: tuple
 ) -> bool:
     task = await asyncio.gather(
-        registerMysqlUser(connObject=connObject, sql=sql, param=param),
+        MysqlManager.registerMysqlUser(connObject=connObject, sql=sql, param=param),
         sendEmail(email),
         return_exceptions=True,
     )
-    print(task)
+    logger.info(task)
     if task[0] is True and task[1] is True:
         return task
     return False
@@ -81,16 +84,26 @@ class RedisManager(object):
         instance.object = redisObject
         return instance
 
+    @staticmethod
+    async def getDataRedis(connObject: object, key):
+        cache = connObject.object.hgetall(key)
+        return cache
 
-async def getDataRedis(connObject: object, key):
-    cache = connObject.object.hgetall(key)
-    return cache
+    @staticmethod
+    async def createCache(connObject: object, key: dict, map: dict):
+        try:
+            logger.debug(f"Redis 添加{key}")
+            connObject.object.hset(key, mapping=map)
+            connObject.object.expire(key, 3600)
+            logger.info("Redis 添加成功")
+            return True
+        except Exception as e:
+            logger.error(e)
 
-
-async def createCache(connObject: object, key, map: dict):
-    try:
-        connObject.object.hset(key, mapping=map)
-        connObject.object.expire(key, 36000)
-        return True
-    except Exception as e:
-        raise RuntimeError(f"存储失败:{e}")
+    @staticmethod
+    async def deleteCache(connObject: object, key: dict):
+        try:
+            connObject.object.delete(key)
+            logger.debug(f"Redis {key} 已删除")
+        except Exception as e:
+            raise RuntimeError(f"删除失败{e}")
