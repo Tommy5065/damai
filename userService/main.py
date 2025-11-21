@@ -6,14 +6,10 @@ from typing import Annotated
 import asyncio
 from util import generateToken, validToken, logger
 from .schema import Register, Login, Token
-from data_base import (
-    UserMysql,
-    RedisManager,
-    registerMysqlUserSendEmail,
-)
+from data_base import registerMysqlUserSendEmail
+from .life import life
 
-
-user_service = FastAPI(title="user-service", version="1.0.0")
+user_service = FastAPI(title="user-service", version="1.0.0", lifespan=life)
 user_service.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"])
 token = OAuth2AuthorizationCodeBearer(
     authorizationUrl="http://localhost:8000/login",
@@ -21,17 +17,34 @@ token = OAuth2AuthorizationCodeBearer(
 )
 
 
+async def get_db():
+    """数据库连接依赖项"""
+    # 从 app.state 获取连接池
+    pool = user_service.state.mysql_pool
+    try:
+        yield pool
+    finally:
+        # 连接会自动归还到连接池，不需要手动关闭
+        pass
+
+
+async def get_redis():
+    """Redis依赖项"""
+    redis_client = user_service.state.redis_client
+    if not redis_client:
+        raise HTTPException(status_code=500, detail="Redis客户端未初始化")
+    yield redis_client
+
+
 @user_service.post("/register")
-async def register(data: Register, tags=["user"]):
+async def register(data: Register, tags=["user"], db=Depends(get_db)):
     """用户注册"""
     # 异步连接数据库，查询结果
     if len(data.username) > 15:
         raise ValueError("username cannot over 15 charactar.")
 
-    userMySql = await UserMysql.init()
-
-    name_exist = await UserMysql.getMysqlUser(
-        connObject=userMySql,
+    name_exist = await db.getMysqlUser(
+        connObject=db,
         sql=("select user_name from usertable where user_name=%s"),
         param=(data.username,),
     )
@@ -48,7 +61,7 @@ async def register(data: Register, tags=["user"]):
         password,
     )
     result = await registerMysqlUserSendEmail(
-        connObject=userMySql, sql=sql, param=param, email=data.email
+        connObject=db, sql=sql, param=param, email=data.email
     )
     if result:
         return {"message": "create user success."}
@@ -58,12 +71,11 @@ async def register(data: Register, tags=["user"]):
 
 
 @user_service.post("/login", response_model=Token)
-async def login(data: Login, tags=["user"]):
+async def login(data: Login, tags=["user"], db=Depends(get_db)):
     """用户登录"""
     # 异步连接数据库，查询密码是否正确，用户名是否存在等
-    userMySql = await UserMysql.init()
-    mysql_password_id = await UserMysql.getMysqlUser(
-        connObject=userMySql,
+    mysql_password_id = await db.getMysqlUser(
+        connObject=db,
         sql=("select password,user_id from usertable where user_name=%s"),
         param=(data.username),
     )
@@ -87,26 +99,28 @@ async def login(data: Login, tags=["user"]):
 
 
 @user_service.get("/check", tags=["user"])
-async def checkInfo(access_token: str = Depends(token)):
+async def checkInfo(
+    access_token: str = Depends(token),
+    db=Depends(get_db),
+    redis=Depends(get_redis),
+):
     """用户查看信息"""
     userID = await validToken(access_token)
     # 缓存命中
     logger.debug(f"{userID}号用户查询信息")
-    redis = await RedisManager.init(db=0)
-    cache = await RedisManager.getDataRedis(redis, key=f"userservice:{userID}")
+    cache = await redis.getDataRedis(redis, key=f"userservice:{userID}")
     if cache:
         return {"status": status.HTTP_200_OK, "message": "获取成功", "data": f"{cache}"}
     # 缓存未命中写入缓存
 
     logger.warning("数据未缓存,访问数据库")
-    userMySql = await UserMysql.init()
-    detail_data = await UserMysql.getMysqlUser(
-        connObject=userMySql,
+    detail_data = await db.getMysqlUser(
+        connObject=db,
         sql=("select user_name,user_email from usertable where user_id=%s"),
         param=(userID),
     )
     user_name, email = detail_data[0][0], detail_data[0][1]
-    createcache = await RedisManager.createCache(
+    createcache = await redis.createCache(
         redis, f"userservice:{userID}", map={"username": user_name, "email": email}
     )
     return {"username": user_name, "email": email}
@@ -117,6 +131,8 @@ async def updateData(
     username: Annotated[str, Form()],
     useremail: Annotated[str, Form()],
     access_token: str = Depends(token),
+    db=Depends(get_db),
+    redis=Depends(get_redis),
 ):
     """用户修改信息分为两种:修改密码还是修改普通信息,
     如果是修改密码,修改后要重新登录,获得新的token
@@ -125,13 +141,12 @@ async def updateData(
     # 1修改普通信息
     userID = await validToken(access_token)
     # 1.1 先删缓存
-    redis = await RedisManager.init(db=0)
-    await RedisManager.deleteCache(redis, f"userservice:{userID}")
+
+    await redis.deleteCache(redis, f"userservice:{userID}")
 
     # 更新数据库
-    userMysql = await UserMysql.init()
-    update_data = await UserMysql.updateMysqlUser(
-        userMysql,
+    update_data = await db.updateMysqlUser(
+        db,
         sql=("update usertable set user_name=%s,user_email=%s where user_id=%s"),
         param=(username, useremail, userID),
     )
@@ -140,5 +155,5 @@ async def updateData(
 
     # 再次删除缓存,延迟双删
     await asyncio.sleep(100)
-    await RedisManager.deleteCache(redis, f"userservice:{userID}")
+    await redis.deleteCache(redis, f"userservice:{userID}")
     return {"message": "更新成功并删除缓存"}
