@@ -2,6 +2,8 @@ from email.message import EmailMessage
 import aiosmtplib
 import jwt
 import datetime
+import logging
+import sys
 
 sender = "tommy5065@qq.com"
 password = "nuojqwwktucqdfgj"
@@ -27,13 +29,13 @@ async def sendEmail(recipents: str):
             await smtp.send_message(msg, sender=sender, recipients=recipents)
         return True
     except Exception as e:
-        raise e
+        logger.error(e)
 
 
-async def generateToken(useranme: str):
+async def generateToken(useranme: str, userid: int):
     expire_time_object = datetime.datetime.now() + datetime.timedelta(weeks=1)
     exp = int(expire_time_object.timestamp())
-    payload = {"username": useranme, "exp": exp}
+    payload = {"username": useranme, "userid": userid, "exp": exp}
     token = jwt.encode(payload, secret_key, algorithm)
 
     if isinstance(token, bytes):  # 转换token编码
@@ -42,27 +44,40 @@ async def generateToken(useranme: str):
     return token
 
 
-async def validToken(token: str):
+async def validToken(token: str) -> str:
     try:
         token_data = jwt.decode(token, secret_key, algorithm)
         if token_data:
-            username = token_data.get(token_data)
-            if username is None:
+            userID = token_data.get("userid")
+            if userID is None:
                 raise ValueError("无效用户")
-            return username
+            return userID
     except Exception as e:
-        print(e)
+        logger.error(e)
         raise ValueError("无效凭证")
 
 
-# 使用asynic.run报：
-# Exception ignored in: <function _ProactorBasePipeTransport.__del__ at 0x0000025EBBAF67A0>
-# RuntimeError: Event loop is closed
-# 原因：asynico对window系统不友好，默认使用_ProactorBasePipeTransport，并且在程序退出释放内存时自动调用了其__del__ 方法
+# 获取日志收集器
+logger = logging.getLogger(name="damai")
+# 设置日志登记
+logger.setLevel(logging.DEBUG)
 
-# 解决方案，更换启动程序
-"""
-loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
-loop.run_until_complete(sendEmail("19985105065@163.com"))
-"""
+# 调用模块时,如果频繁多次错误,每次会添加handler,造成重复日志,每次都移除所有的handler,后面再重新添加
+while logger.hasHandlers():
+    for i in logger.handlers:
+        logger.removeHandler(i)
+
+# 对日志文件格式设置
+formatter = logging.Formatter(
+    "%(asctime)s-%(pathname)s[line:%(lineno)d]-%(levelname)s: %(message)s"
+)
+fh = logging.FileHandler(r"test_logger.log", encoding="utf-8")  # 日志文件路径，格式名称
+fh.setLevel(logging.DEBUG)  # 日志打印级别
+fh.setFormatter(fmt=formatter)
+logger.addHandler(fh)
+
+# 控制台输出控制
+ch = logging.StreamHandler(sys.stdout)
+ch.setLevel(logging.DEBUG)
+ch.setFormatter(fmt=formatter)
+logger.addHandler(ch)
