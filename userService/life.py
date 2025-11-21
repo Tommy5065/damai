@@ -21,6 +21,5 @@ async def life(app: FastAPI):
         await mysql_client.cursor.close()
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
-        await redis_client.close()
     except Exception as e:
         logger.warning(f"启动时候的警告:{e}")
