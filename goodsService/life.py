@@ -3,6 +3,7 @@ from fastapi import FastAPI
 import asyncio
 from util import logger
 from data_base import RedisManager, MysqlManager
+from consulTask.main import Service
 
 
 async def CacheWarmuService(connMysql: object, connRedis: object, param: tuple):
@@ -79,6 +80,11 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(CacheWarmuService(mysql_client, redis_client, (21)))
         logger.info("预热已异步开启")
 
+        logger.info("开始注册goodsService服务")
+        goodsService = Service()
+        await asyncio.sleep(5)
+        goodsService.service_register("goodsService", "127.0.0.1", 8001)
+
         # 应用正常运行期间
         yield
 
@@ -86,6 +92,7 @@ async def lifespan(app: FastAPI):
         await mysql_client.cursor.close()
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
+        goodsService.service_deregister("goodsService")
 
         logger.info(f"{app}应用关闭成功")
     except Exception as e:
