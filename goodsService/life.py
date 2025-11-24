@@ -88,12 +88,13 @@ async def lifespan(app: FastAPI):
         # 应用正常运行期间
         yield
 
+    except Exception as e:
+        logger.warning(f"启动时候的警告:{e}")
+
+    finally:
         logger.info("商品服务关闭开始关闭数据库连接")
         await mysql_client.cursor.close()
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
         goodsService.service_deregister("goodsService")
-
         logger.info(f"{app}应用关闭成功")
-    except Exception as e:
-        logger.warning(f"启动时候的警告:{e}")
