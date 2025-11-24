@@ -4,6 +4,7 @@ import asyncio
 from util import logger
 from data_base import RedisManager, MysqlManager
 from consulTask.main import Service
+from consulTask.rabbitmq import RabbiMQ
 
 
 async def CacheWarmuService(connMysql: object, connRedis: object, param: tuple):
@@ -85,7 +86,12 @@ async def lifespan(app: FastAPI):
         await asyncio.sleep(5)
         goodsService.service_register("goodsService", "127.0.0.1", 8001)
 
-        # 应用正常运行期间
+        logger.info("开始连接mq服务器")
+        rabbit_http = goodsService.service_found("rabbitmq")
+        host = rabbit_http.split(":")[0]
+        port = rabbit_http.split(":")[1]
+        rabbit = RabbiMQ.init(host, port)
+
         yield
 
     except Exception as e:
@@ -97,4 +103,4 @@ async def lifespan(app: FastAPI):
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
         goodsService.service_deregister("goodsService")
-        logger.info(f"{app}应用关闭成功")
+        rabbit.conn.close()
