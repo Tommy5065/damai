@@ -1,39 +1,47 @@
 import consul
+from util import logger
 
 
 class Service:
     def __init__(self):
-        self._concsul = consul.Consul(host="127.0.0.1", port=8500)
+        self._consul = consul.Consul(host="127.0.0.1", port=8500)
 
     def service_register(self, name: str, host: str, port: int):
         try:
-            self._concsul.agent.service.register(
+            logger.debug(f"{name}请求注册服务")
+            self._consul.agent.service.register(
                 name=name,
                 service_id=name,
                 address=host,
                 port=port,
                 check=consul.Check.tcp(
-                    host=host, port=port, interval=5, timeout=30, deregister=30
+                    host,
+                    port,
+                    interval=30,
+                    timeout=15,
+                    deregister=15,
                 ),  # 心跳检查
             )
-            print("service register success.")
+            logger.info(f"{name} register success.")
         except Exception as e:
-            print(f"register fail:{e}")
-            raise RuntimeError("register fail")
+            ...
+            logger.error(f"register fail:{e}")
 
-    def service_found(self, name: str):
+    def service_found(self, name: str, requestorName: str = None):
         try:
-            service = self._concsul.agent.services()
+            # logger.debug(f"{requestorName}请求{name}服务地址")
+            service = self._consul.agent.services()
             if service:
                 service_http = "%s:%s" % (
                     service.get(name).get("Address"),
                     service.get(name).get("Port"),
                 )
+            logger.debug(f"{requestorName}请求{name}服务地址成功")
             return service_http
         except Exception as e:
-            print(f"service get wrong fail:{e}")
-            raise RuntimeError("service get wrong")
+            logger.error(f"found service fail:{e}")
 
     def service_deregister(self, name: str):
-        self._concsul.agent.service.deregister(service_id=name)
-        print("deregister success.")
+        logger.debug(f"注销{name}服务地址")
+        self._consul.agent.service.deregister(service_id=name)
+        logger.debug(f"请求{name}服务地址注销成功")
