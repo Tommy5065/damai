@@ -27,6 +27,7 @@ async def life(app: FastAPI):
         host = rabbit_http.split(":")[0]
         port = rabbit_http.split(":")[1]
         rabbit = RabbiMQ.init(host, port)
+        app.state.rabbit = rabbit
 
         yield
 
