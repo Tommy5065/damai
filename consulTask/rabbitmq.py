@@ -1,6 +1,6 @@
 import json
 import pika
-from main import Service
+from consulTask.main import Service
 from config.util import logger
 
 rabbit_service = Service()
