@@ -1,7 +1,7 @@
-from main import Service
-from util import logger
 import json
 import pika
+from main import Service
+from config.util import logger
 
 rabbit_service = Service()
 
