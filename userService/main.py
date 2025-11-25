@@ -4,9 +4,9 @@ from fastapi.security import OAuth2AuthorizationCodeBearer
 from passlib.hash import pbkdf2_sha256
 from typing import Annotated
 import asyncio
-from util import generateToken, validToken, logger
+from config.util import generateToken, validToken, logger
 from .schema import Register, Login, Token
-from data_base import registerMysqlUserSendEmail
+from config.data_base import registerMysqlUserSendEmail
 from .life import life
 
 user_service = FastAPI(title="user-service", version="1.0.0", lifespan=life)

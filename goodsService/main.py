@@ -14,9 +14,9 @@
 from fastapi import FastAPI, Query, status, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
-from util import logger
+from config.util import logger
 from .life import lifespan
-from data_base import RedisManager
+from config.data_base import RedisManager
 
 goods_service = FastAPI(title="goodsService", lifespan=lifespan)
 goods_service.add_middleware(CORSMiddleware, allow_methods=["*"], allow_origins=["*"])
@@ -70,10 +70,10 @@ async def checkGoods(
     cache = await redis.getDataRedis(redis, key=f"goodsService:goodsid:{goodsid}")
     if cache:
         return {"status": status.HTTP_200_OK, "message": "缓存获取成功", "data": cache}
-    
+
     logger.info("缓存未命中,防止缓存击穿用分布式锁")
     lock_name = str(goodsid)
-    identifier,renew_exp = await RedisManager.acuire_lock(redis,lock_name)
+    identifier, renew_exp = await RedisManager.acuire_lock(redis, lock_name)
     if identifier:
         try:
             detail = await db.getMysqlUser(
@@ -107,9 +107,9 @@ async def checkGoods(
                         "票价": goods_price,
                     },
                 }
-            
+
             logger.info(f"请求不存在数据{goodsid}")
-        
+
             await redis.createCache(
                 redis,
                 key=f"goodsService:goodsid:{goodsid}",
@@ -120,7 +120,11 @@ async def checkGoods(
             logger.warning(f"未生成锁错误原因:{e}")
         finally:
             try:
-                await RedisManager.addExpTimeCancel(redis,lock_name,identifier,renew_exp)
+                await RedisManager.addExpTimeCancel(
+                    redis, lock_name, identifier, renew_exp
+                )
+            except Exception as e:
+                logger.critical(f"锁释放失败:{e}")
 
 
 @goods_service.get("/purchase")
