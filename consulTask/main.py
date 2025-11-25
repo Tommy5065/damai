@@ -1,5 +1,9 @@
 import consul
-from util import logger
+import os
+import sys
+
+sys.path.append(os.getcwd())
+from config.util import logger
 
 
 class Service:
