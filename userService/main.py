@@ -4,6 +4,8 @@ from fastapi.security import OAuth2AuthorizationCodeBearer
 from passlib.hash import pbkdf2_sha256
 from typing import Annotated
 import asyncio
+from threading import Timer
+import redis
 from config.util import generateToken, validToken, logger
 from .schema import Register, Login, Token
 from config.data_base import registerMysqlUserSendEmail
@@ -34,6 +36,22 @@ async def get_redis():
     if not redis_client:
         raise HTTPException(status_code=500, detail="Redis客户端未初始化")
     yield redis_client
+
+
+async def get_mq():
+    """rabbitmq对象"""
+    mq = user_service.state.rabbit
+    if not mq:
+        raise HTTPException(status_code=500, detail="Rabbit客户端未初始化")
+    yield mq.conn
+
+
+def secondDeleteRedis(userID):
+    r = redis.Redis(host="localhost", port=6379, db=0, password=123456)
+    r.ping()
+    logger.info("第二次删除redis")
+    r.delete(f"userservice:{userID}")
+    r.close()
 
 
 @user_service.post("/register")
@@ -70,8 +88,8 @@ async def register(data: Register, tags=["user"], db=Depends(get_db)):
     )
 
 
-@user_service.post("/login", response_model=Token)
-async def login(data: Login, tags=["user"], db=Depends(get_db)):
+@user_service.post("/login", response_model=Token, tags=["user"])
+async def login(data: Login, db=Depends(get_db)):
     """用户登录"""
     # 异步连接数据库，查询密码是否正确，用户名是否存在等
     mysql_password_id = await db.getMysqlUser(
@@ -120,7 +138,7 @@ async def checkInfo(
         param=(userID),
     )
     user_name, email = detail_data[0][0], detail_data[0][1]
-    createcache = await redis.createCache(
+    await redis.createCache(
         redis, f"userservice:{userID}", map={"username": user_name, "email": email}
     )
     return {"username": user_name, "email": email}
@@ -154,6 +172,6 @@ async def updateData(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="姓名重复")
 
     # 再次删除缓存,延迟双删
-    await asyncio.sleep(100)
-    await redis.deleteCache(redis, f"userservice:{userID}")
+    t = Timer(2, secondDeleteRedis, args=(userID,))
+    t.start()
     return {"message": "更新成功并删除缓存"}
