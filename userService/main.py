@@ -53,7 +53,7 @@ def secondDeleteRedis(userID):
     r.close()
 
 
-@user_service.post("/register", response_model=MessageOut)
+@user_service.post("/user/register", response_model=MessageOut)
 async def register(data: Register, tags=["user"], db=Depends(get_db)):
     """用户注册"""
     # 异步连接数据库，查询结果
@@ -87,7 +87,7 @@ async def register(data: Register, tags=["user"], db=Depends(get_db)):
     )
 
 
-@user_service.post("/login", response_model=Token, tags=["user"])
+@user_service.post("/user/login", response_model=Token, tags=["user"])
 async def login(loginData: OAuth2PasswordRequestForm = Depends(), db=Depends(get_db)):
     """用户登录"""
     # 异步连接数据库，查询密码是否正确，用户名是否存在等
@@ -113,7 +113,7 @@ async def login(loginData: OAuth2PasswordRequestForm = Depends(), db=Depends(get
     )
 
 
-@user_service.get("/check", tags=["user"], response_model=CheckInfoOut)
+@user_service.get("/user/check", tags=["user"], response_model=CheckInfoOut)
 async def checkInfo(
     access_token: str = Depends(token),
     db=Depends(get_db),
@@ -128,14 +128,13 @@ async def checkInfo(
         return cache
 
     logger.warning("数据未缓存,访问数据库")
-    detail_data = await db.getMysqlUser(
+    detail_data = await db.checkMysqlUser(
         connObject=db,
         sql=("select user_name,user_email,iden_id from usertable where user_id=%s"),
         param=(userID),
     )
 
-    # 用字典推导式
-    user_name, email, iden_id = detail_data[0][0], detail_data[0][1], detail_data[0][2]
+    user_name, email, iden_id = [*detail_data]
     if iden_id is None:
         iden_id = "null"
     await redis.createCache(
@@ -146,7 +145,7 @@ async def checkInfo(
     return {"username": user_name, "email": email, "idenID": iden_id}
 
 
-@user_service.patch("/update", tags=["user"], response_model=MessageOut)
+@user_service.patch("/user/update/info", tags=["user"], response_model=MessageOut)
 async def update(
     username: Optional[str] = Form(None),
     useremail: Optional[EmailStr] = Form(None),
@@ -218,7 +217,7 @@ async def update(
     return MessageOut(message="修改成功")
 
 
-@user_service.patch("/update/password", tags=["user"], response_model=MessageOut)
+@user_service.patch("/user/update/password", tags=["user"], response_model=MessageOut)
 async def updatePassword(
     currentPassword: str = Form(...),
     newPassword: str = Form(...),
