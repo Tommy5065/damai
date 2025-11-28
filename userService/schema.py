@@ -1,16 +1,23 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from fastapi import Body
 
 
-class Login(BaseModel):
-    username: str = Body(..., embed=True)
-    password: str = Body(..., embed=True)
-
-
-class Register(Login):
-    email: str = Body(..., embed=True)
+class Register(BaseModel):
+    username: str
+    password: str
+    email: EmailStr
 
 
 class Token(BaseModel):
     token: str = Body(...)
     type: str = "Bearer"
+
+
+class MessageOut(BaseModel):
+    message: str
+
+
+class CheckInfoOut(BaseModel):
+    username: str
+    email: EmailStr
+    idenID: str = None
