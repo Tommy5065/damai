@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from config.util import logger
+from utils.log import logger
 from config.data_base import RedisManager, MysqlManager
 from consulTask.main import Service
 from consulTask.rabbitmq import RabbiMQ
@@ -21,11 +21,6 @@ async def life(app: FastAPI):
         orderService.service_register("orderservice", "127.0.0.1", 8002)
 
         logger.info("开始连接mq服务器")
-        rabbit_http = orderService.service_found("rabbitmq")
-        host = rabbit_http.split(":")[0]
-        port = rabbit_http.split(":")[1]
-        rabbit = await RabbiMQ.init(host, port)
-        app.state.rabbit = rabbit
 
         yield
 
@@ -38,4 +33,3 @@ async def life(app: FastAPI):
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
         orderService.service_deregister("orderservice")
-        rabbit.conn.close()

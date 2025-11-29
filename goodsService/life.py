@@ -1,8 +1,9 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import asyncio
-from config.util import logger
-from config.data_base import RedisManager, MysqlManager
+from utils.log import logger
+from config.data_base import MysqlManager
+from config.Redisbase import RedisManager
 from consulTask.main import Service
 from consulTask.rabbitmq import RabbiMQ
 

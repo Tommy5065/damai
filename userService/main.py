@@ -6,7 +6,8 @@ from pydantic import EmailStr
 from passlib.hash import pbkdf2_sha256
 from threading import Timer
 import redis
-from config.util import generateToken, validToken, logger
+from utils.log import logger
+from utils.userjwt import generateToken, validToken
 from .schema import Register, Token, MessageOut, CheckInfoOut
 from config.data_base import registerMysqlUserSendEmail
 from .life import life

@@ -2,7 +2,7 @@ import redis
 import uuid
 import time
 import asyncio
-from config.util import logger
+from utils.log import logger
 
 
 # 异步连接工厂类

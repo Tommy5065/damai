@@ -1,10 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from config.util import logger
-from config.data_base import RedisManager, MysqlManager
+from utils.log import logger
+from config.data_base import MysqlManager
+from config.Redisbase import RedisManager
 from consulTask.main import Service
-from consulTask.rabbitmq import RabbiMQ
 
 
 @asynccontextmanager
@@ -18,20 +18,18 @@ async def life(app: FastAPI):
         app.state.mysql_pool = mysql_client
         app.state.redis_client = redis_client
 
-        userService = Service()
-        await asyncio.sleep(5)
-        userService.service_register("userService", "127.0.0.1", 8000)
+        # userService = Service()
+        # await asyncio.sleep(5)
+        # userService.service_register("userService", "127.0.0.1", 8000)
+        # logger.info("开始用户消费者后端")
+        # from userService.userconsumer import consumer
 
-        logger.info("开始连接mq服务器")
-        rabbit_http = userService.service_found("rabbitmq")
-        host = rabbit_http.split(":")[0]
-        port = rabbit_http.split(":")[1]
-        rabbit = await RabbiMQ.init(host, port)
-        app.state.rabbit = rabbit
+        # logger.info("消费者任务已创建")
 
+        # consume = asyncio.create_task(consumer(mysql_client))
+        # app.state.consume_task = consume
         yield
 
-        logger.info("userService应用关闭成功")
     except Exception as e:
         logger.warning(f"启动时候的警告:{e}")
 
@@ -40,5 +38,7 @@ async def life(app: FastAPI):
         await mysql_client.cursor.close()
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
-        userService.service_deregister("userService")
-        rabbit.conn.close()
+        # userService.service_deregister("userService")
+        # if app.state.consume_task:
+        # app.state.consume_task.cancel()
+        #     logger.info("用户消费后端关闭成功")

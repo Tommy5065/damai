@@ -14,9 +14,9 @@
 from fastapi import FastAPI, Query, status, HTTPException, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
-from config.util import logger
+from utils.log import logger
 from .life import lifespan
-from config.data_base import RedisManager
+from config.Redisbase import RedisManager
 
 goods_service = FastAPI(title="goodsService", lifespan=lifespan)
 goods_service.add_middleware(CORSMiddleware, allow_methods=["*"], allow_origins=["*"])

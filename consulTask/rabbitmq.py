@@ -1,80 +1,63 @@
 import json
-import pika
-from consulTask.main import Service
-from config.util import logger
+import aio_pika
+import os
+import sys
 
-rabbit_service = Service()
 
-SERVICE_NAME = "rabbitmq"
-HOST = "127.0.0.1"
-PORT = 5672  # 走AMQU协议用5672端口
-
-rabbit_service.service_register(SERVICE_NAME, HOST, PORT)
+sys.path.append(os.getcwd())
+from utils.log import logger
 
 
 class RabbiMQ(object):
-    @classmethod
-    async def init(
-        cls,
-        host: str,
-        port: str,
-    ):
-        logger.info("开始连接rabbitmq")
-        instacne = cls()
-        # 连接rabbitmq用户认证
-        Credential = pika.PlainCredentials("guest", "guest")
-        connection = pika.BlockingConnection(
-            pika.ConnectionParameters(
-                host=host, port=port, virtual_host="/", credentials=Credential
-            )
-        )
-        instacne.conn = connection
-        return instacne
+    def __init__(self):
+        pass
 
     @staticmethod
-    async def sendMessage(
-        connObject: object, service_name: str, order_id: str, access_token: str
-    ):
-        try:
-            channel = connObject.conn.channel()  # 开启管道
-            channel.queue_bind(
-                queue=service_name, routing_key=service_name, exchange="tcp1"
-            )  # 一定要创建绑定！！！！不然又读取不了信息
-            channel.queue_declare(queue=service_name, durable=True)  # 创建队列,持久化
+    async def setQueueAndBings():
+        connection = await aio_pika.connect_robust("amqp://guest:guest@localhost:5672/")
+        async with connection:
+            channel = await connection.channel()  # 开启管道
+            await channel.declare_exchange(name="tcp1", durable=True)  # 声明交换机
 
-            channel.exchange_declare(
-                exchange="tcp1", exchange_type="direct", durable=True
-            )
-
-            # 构建消息格式
-            messageFormat = {
-                "orderId": order_id,
-                "token": access_token,
-                "identify": False,
+            # 队列和路由配置
+            QUEUE_CONFIG = {
+                "userService": {
+                    "routing_key": ["valideOrderToken"],
+                    "callBack": "handlerUser",
+                },
+                "orderService": {
+                    "routing_key": ["getuserID", "paySuccess", "payFailed"],
+                    "callBack": "handlerOrder",
+                },
+                "goodsService": {
+                    "routing_key": ["createOrder", "cancelOrder"],
+                    "callBack": "handlerGoods",
+                },
             }
-            logger.info("开始准备发送消息")
-            channel.basic_publish(
-                exchange="tcp1",
-                routing_key=service_name,  # 路由键把交换机和队列绑定
-                body=json.dumps(messageFormat),
-                properties=pika.BasicProperties(delivery_mode=2),  # 消息持久化
-            )
-            logger.info("发送消息成功")
-        except Exception as e:
-            logger.critical(f"构建消息过程失败:{e}")
+
+            for queneName, config in QUEUE_CONFIG.items():
+                await channel.queue_declare(
+                    queue=queneName, durable=True
+                )  # 创建队列,持久化
+                for routing_key in config["routing_key"]:
+                    await channel.queue_bind(
+                        queue=queneName, routing_key=routing_key, exchange="tcp1"
+                    )
+                    logger.debug(f"{routing_key}路由绑定{queneName}建")
 
     @staticmethod
-    async def consumeMessage(connObject: object, service_name: str, callback):
-        try:
-            channel = connObject.conn.channel()
+    async def sendmessage(message: dict, routing_key: str):
+        """异步发送消息"""
+        connection = await aio_pika.connect_robust("amqp://guest:guest@localhost:5672/")
+        async with connection:
+            channel = await connection.channel()
+            exchange = await channel.declare_exchange(
+                "tcp1", durable=True
+            )  # 声明交换机了才好发消息
 
-            channel.basic_consume(
-                queue=service_name,
-                consumer_tag=f"{service_name}consume",
-                on_message_callback=callback,
+            logger.info("消息构建完毕,准备发送")
+            await exchange.publish(
+                aio_pika.Message(body=json.dumps(message).encode()),
+                routing_key=routing_key,
             )
-
-            logger.info("准备消费阶段")
-            channel.start_consuming()
-        except Exception as e:
-            logger.critical(f"消费信息失败:{e}")
+            logger.info("发送成功")

@@ -1,6 +1,7 @@
 import aiomysql
 import asyncio
-from config.util import sendEmail, logger
+from utils.sendemail import sendEmail
+from utils.log import logger
 
 
 # 异步连接数据库封装在一个类里，不用重复写连接池了

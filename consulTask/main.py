@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.append(os.getcwd())
-from config.util import logger
+from utils.log import logger
 
 
 class Service:
