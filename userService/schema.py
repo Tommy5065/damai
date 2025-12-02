@@ -21,3 +21,11 @@ class CheckInfoOut(BaseModel):
     username: str
     email: EmailStr
     idenID: str = None
+
+
+class userIDOut(BaseModel):
+    userid: int
+
+
+class userIdenIDOut(BaseModel):
+    userIdenID: str

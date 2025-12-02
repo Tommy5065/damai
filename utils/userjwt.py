@@ -1,7 +1,11 @@
 import jwt
 import datetime
 import os
+from dotenv import load_dotenv
 from utils.log import logger
+
+# 加载环境变量
+load_dotenv()
 
 
 async def generateToken(useranme: str, userid: int):
@@ -18,12 +22,12 @@ async def generateToken(useranme: str, userid: int):
 
 async def validToken(token: str) -> str:
     try:
-        token_data = jwt.decode(token, os.getenv("SECRET_KEY"), os.getenv("ALGORITHM"))
+        token_data = jwt.decode(
+            token, os.getenv("SECRET_KEY"), algorithms=[os.getenv("ALGORITHM")]
+        )
         if token_data:
             userID = token_data.get("userid")
-            if userID is None:
-                raise ValueError("无效用户")
             return userID
     except Exception as e:
         logger.error(e)
-        raise ValueError("无效凭证")
+        raise PermissionError("令牌验证失败")

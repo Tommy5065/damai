@@ -1,14 +1,14 @@
-from fastapi import FastAPI, HTTPException, status, Depends, Form
+from fastapi import FastAPI, HTTPException, status, Depends, Form, Path
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2AuthorizationCodeBearer, OAuth2PasswordRequestForm
-from typing import Optional
+from typing import Optional, Annotated
 from pydantic import EmailStr
 from passlib.hash import pbkdf2_sha256
 from threading import Timer
 import redis
 from utils.log import logger
 from utils.userjwt import generateToken, validToken
-from .schema import Register, Token, MessageOut, CheckInfoOut
+from .schema import Register, Token, MessageOut, CheckInfoOut, userIDOut, userIdenIDOut
 from config.data_base import registerMysqlUserSendEmail
 from .life import life
 
@@ -59,7 +59,10 @@ async def register(data: Register, tags=["user"], db=Depends(get_db)):
     """用户注册"""
     # 异步连接数据库，查询结果
     if len(data.username) > 15:
-        raise ValueError("username cannot over 15 charactar.")
+        raise HTTPException(
+            status_code=status.HTTP_406_NOT_ACCEPTABLE,
+            detail="username cannot over 15 charactar.",
+        )
 
     name_exist = await db.getMysqlUser(
         connObject=db,
@@ -100,7 +103,7 @@ async def login(loginData: OAuth2PasswordRequestForm = Depends(), db=Depends(get
 
     if not mysqlPasswordAndUserID:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
-    mysql_password, user_id = mysqlPasswordAndUserID[0][0], mysqlPasswordAndUserID[0][1]
+    mysql_password, user_id = [*mysqlPasswordAndUserID]
     if pbkdf2_sha256.verify(
         loginData.password, hash=mysql_password
     ):  # 登录成功给个OAuth
@@ -230,8 +233,8 @@ async def updatePassword(
     mysqlPassword = await db.checkMysqlUser(
         db, sql="select password from usertable where user_id=%s", param=(userID,)
     )
-    mysqlPassword = mysqlPassword[0]
-    if pbkdf2_sha256.verify(currentPassword, hash=mysqlPassword):
+
+    if pbkdf2_sha256.verify(currentPassword, hash=mysqlPassword[0]):
         if newPassword == confirmNewPassword:
             newPassword = pbkdf2_sha256.hash(confirmNewPassword)
             await db.updateMysqlUser(
@@ -244,3 +247,28 @@ async def updatePassword(
             status_code=status.HTTP_400_BAD_REQUEST, detail="新密码前后不一致"
         )
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="旧密码不正确")
+
+
+@user_service.get("/api/user/token", tags=["userAPI"], response_model=userIDOut)
+async def getUserIDFromOrder(token=Depends(token)):
+    try:
+        userID = await validToken(token)
+        return userIDOut(userid=userID)
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="无效令牌，重新登录"
+        )
+
+
+@user_service.post("/api/{userID}/iden_id", response_model=userIdenIDOut)
+async def getUserIdenID(db=Depends(get_db), userID=Annotated[int, Path(...)]):
+    try:
+        idenID = await db.checkMysqlUser(
+            db, sql="select iden_id from usertable where user_id=%s", param=(userID,)
+        )
+
+        return userIdenIDOut(userIdenID=idenID[0])
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"查询失败{e}"
+        )
