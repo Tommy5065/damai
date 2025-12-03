@@ -5,7 +5,7 @@ from config.data_base import MysqlManager
 from config.Redisbase import RedisManager
 from consulTask.main import service
 from consulTask.httpClien import HttpClient
-from consulTask.rabbitmq import RabbiMQ
+from consulTask.rabbitmq import rabbitMq
 
 
 @asynccontextmanager
@@ -19,6 +19,7 @@ async def life(app: FastAPI):
         app.state.mysql_pool = mysql_client
         app.state.redis_client = redis_client
         await service.service_register("orderService", "127.0.0.1", 8002)
+        await rabbitMq.consumeManage()
 
         yield
 
@@ -32,3 +33,4 @@ async def life(app: FastAPI):
         await mysql_client.pool.wait_closed()
         await HttpClient.close()
         await service.service_deregister("orderService")
+        await rabbitMq.close()

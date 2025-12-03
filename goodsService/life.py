@@ -4,7 +4,7 @@ import asyncio
 from utils.log import logger
 from config.data_base import MysqlManager
 from config.Redisbase import RedisManager
-from consulTask.main import Service
+from consulTask.main import service
 from consulTask.rabbitmq import RabbiMQ
 
 
@@ -83,16 +83,14 @@ async def lifespan(app: FastAPI):
         logger.info("预热已异步开启")
 
         logger.info("开始注册goodsService服务")
-        goodsService = Service()
-        await asyncio.sleep(5)
-        goodsService.service_register("goodsService", "127.0.0.1", 8001)
+        await service.service_register("goodsService", "127.0.0.1", 8001)
 
-        logger.info("开始连接mq服务器")
-        rabbit_http = goodsService.service_found("rabbitmq")
-        host = rabbit_http.split(":")[0]
-        port = rabbit_http.split(":")[1]
-        rabbit = await RabbiMQ.init(host, port)
-        app.state.rabbit = rabbit
+        # logger.info("开始连接mq服务器")
+        # rabbit_http = goodsService.service_found("rabbitmq")
+        # host = rabbit_http.split(":")[0]
+        # port = rabbit_http.split(":")[1]
+        # rabbit = await RabbiMQ.init(host, port)
+        # app.state.rabbit = rabbit
 
         yield
 
@@ -104,5 +102,5 @@ async def lifespan(app: FastAPI):
         await mysql_client.cursor.close()
         mysql_client.pool.close()
         await mysql_client.pool.wait_closed()
-        goodsService.service_deregister("goodsService")
-        rabbit.conn.close()
+        await service.service_deregister("goodsService")
+        # rabbit.conn.close()

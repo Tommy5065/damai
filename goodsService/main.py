@@ -11,12 +11,13 @@
 
 """
 
-from fastapi import FastAPI, Query, status, HTTPException, Depends, Form
+from fastapi import FastAPI, Query, status, HTTPException, Depends, Form, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
 from utils.log import logger
 from .life import lifespan
 from config.Redisbase import RedisManager
+
 
 goods_service = FastAPI(title="goodsService", lifespan=lifespan)
 goods_service.add_middleware(CORSMiddleware, allow_methods=["*"], allow_origins=["*"])
@@ -127,20 +128,29 @@ async def checkGoods(
                 logger.critical(f"锁释放失败:{e}")
 
 
-@goods_service.get("/purchase")
-async def rushPurchase(redis=Depends(get_redis)):
-    lock_name = "jackZhou"
+@goods_service.post("/api/goods/purchase")
+async def rushPurchase(request: Request, redis=Depends(get_redis)):
+    data = await request.json()
+    lock_name, goodsID, number = [*data.values()]
     identifier, renew_task = await RedisManager.acuire_lock(redis, lock_name)
     if identifier:
         try:
-            cache = await RedisManager.getDataRedis(redis, "goodsService:goodsid:2")
-            if int(cache["库存量"]) > 0:
-                redis.object.hincrby("goodsService:goodsid:2", "库存量", -1)
-                logger.debug(cache)
-                return f"查询结果:{cache}"
-
+            cache = await RedisManager.getDataRedis(
+                redis, f"goodsService:goodsid:{goodsID}"
+            )
+            if int(cache["库存量"]) - number < 0:
+                raise ValueError("库存量不足")
+            else:
+                redis.object.hincrby(
+                    f"goodsService:goodsid:{goodsID}", "库存量", -number
+                )
+                logger.debug(cache["库存量"])
+                return
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"{e}")
         except Exception as e:
             logger.warning(f"业务错误:{e}")
+
         finally:
             try:
                 await RedisManager.addExpTimeCancel(
@@ -150,3 +160,16 @@ async def rushPurchase(redis=Depends(get_redis)):
                 logger.critical(f"释放锁失败:{e}")
 
     return {"message": "now is busy"}
+
+
+@goods_service.get("/api/goods/{goodsID}/goodsInfo")
+async def getGoodsInfoFromRedis(
+    goodsID: Annotated[int, Path(...)], redis=Depends(get_redis)
+):
+    try:
+        cache = await redis.getDataRedis(redis, key=f"goodsService:goodsid:{goodsID}")
+        return cache
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}"
+        )

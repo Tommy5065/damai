@@ -24,6 +24,8 @@ class AsyncHttpClient:
         method: str,
         serviceName: str,
         path: str,
+        data=None,  # data关键字代表表单数据发送
+        json=None,  # 以json格式发送,同时请求头格式为content-type:application/json
         headers: Dict[str, str] = None,
         **kwargs,
     ):
@@ -36,7 +38,9 @@ class AsyncHttpClient:
 
         try:
             await self.getSession()
-            async with self.session.request(method, url, headers=headers) as response:
+            async with self.session.request(
+                method, url, headers=headers, json=json
+            ) as response:
                 # 用来抛出错误响应码，进行异常处理,不返回错的响应体
                 response.raise_for_status()
                 return await response.json()
@@ -46,7 +50,8 @@ class AsyncHttpClient:
                 raise PermissionError("用户重新登录")
             if e.status == 400:
                 raise ValueError("用户未填身份证信息")
-
+            if e.status == 502:
+                raise ValueError("库存量不足")
         except aiohttp.ClientTimeout:
             raise TimeoutError(f"{serviceName}响应超时")
 
