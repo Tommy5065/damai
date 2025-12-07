@@ -1,7 +1,11 @@
-from email.message import EmailMessage
 import aiosmtplib
 import os
+from dotenv import load_dotenv
+from email.message import EmailMessage
 from utils.log import logger
+
+# 加载环境变量
+load_dotenv()
 
 
 async def sendEmail(recipents: str):
