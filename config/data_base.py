@@ -64,6 +64,12 @@ class MysqlManager(object):
             logger.error(e)
             return False
 
+    async def close(self):
+        logger.info("开始关闭数据库")
+        await self.cursor.close()
+        self.pool.close()
+        await self.pool.wait_closed()
+
 
 async def registerMysqlUserSendEmail(
     connObject: object, sql: str, email: str, param: tuple

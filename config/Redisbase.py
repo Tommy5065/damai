@@ -27,7 +27,7 @@ class RedisManager(object):
         try:
             logger.debug(f"Redis 添加{key}")
             connObject.object.hset(key, mapping=map)
-            connObject.object.expire(key, 360)
+            connObject.object.expire(key, 15 * 60)
             logger.info("Redis 添加成功")
             return True
         except Exception as e:
@@ -118,9 +118,10 @@ class RedisManager(object):
         try:
             if renew_exp:
                 renew_exp.cancel()
+                await renew_exp
                 logger.info("关闭续期")
         except asyncio.CancelledError as e:
-            logger.warning(f"关闭续期失败原因:{e}")
+            pass
 
         finally:
             await RedisManager.release_lock(connObject, lock_name, identifier)
