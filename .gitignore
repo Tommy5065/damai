@@ -13,3 +13,6 @@ consul.exe
 uv.lock
 test_logger.log
 .python-version
+.env
+mock.py
+README.md
