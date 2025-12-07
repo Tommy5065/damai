@@ -5,7 +5,7 @@ from utils.log import logger
 from config.data_base import MysqlManager
 from config.Redisbase import RedisManager
 from consulTask.main import service
-from consulTask.rabbitmq import RabbiMQ
+from consulTask.rabbitmq import rabbitMQ
 
 
 async def CacheWarmuService(connMysql: object, connRedis: object, param: tuple):
@@ -84,13 +84,12 @@ async def lifespan(app: FastAPI):
 
         logger.info("开始注册goodsService服务")
         await service.service_register("goodsService", "127.0.0.1", 8001)
-
-        # logger.info("开始连接mq服务器")
-        # rabbit_http = goodsService.service_found("rabbitmq")
-        # host = rabbit_http.split(":")[0]
-        # port = rabbit_http.split(":")[1]
-        # rabbit = await RabbiMQ.init(host, port)
-        # app.state.rabbit = rabbit
+        await rabbitMQ.initilize()
+        # 开启消费者任务
+        stockConsumeManager = asyncio.create_task(
+            rabbitMQ.stockConsumeManager(mysql_client, redis_client)
+        )
+        app.state.stockConsumeManager = stockConsumeManager
 
         yield
 
@@ -98,9 +97,14 @@ async def lifespan(app: FastAPI):
         logger.warning(f"启动时候的警告:{e}")
 
     finally:
-        logger.info("商品服务关闭开始关闭数据库连接")
-        await mysql_client.cursor.close()
-        mysql_client.pool.close()
-        await mysql_client.pool.wait_closed()
         await service.service_deregister("goodsService")
-        # rabbit.conn.close()
+        if hasattr(app.state, "stockConsumeManager"):
+            app.state.stockConsumeManager.cancel()
+            try:
+                await asyncio.wait_for(app.state.stockConsumeManager, timeout=5)
+            except TimeoutError:
+                logger.info("关闭库存消费者后台超时")
+            except asyncio.exceptions.CancelledError:
+                pass
+        await mysql_client.close()
+        await rabbitMQ.close()
