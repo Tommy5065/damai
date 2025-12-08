@@ -22,15 +22,17 @@ async def CacheWarmuService(connMysql: object, connRedis: object, param: tuple):
             if exist:
                 continue
 
-            task = RedisManager.createCache(
-                connRedis,
-                key=key,
-                map={
-                    "商品名称": goods["商品名称"],
-                    "演出地址": goods["演出地址"],
-                    "库存量": goods["库存量"],
-                    "票价": goods["票价"],
-                },
+            task = asyncio.create_task(
+                RedisManager.createCache(
+                    connRedis,
+                    key=key,
+                    map={
+                        "商品名称": goods["商品名称"],
+                        "演出地址": goods["演出地址"],
+                        "库存量": goods["库存量"],
+                        "票价": goods["票价"],
+                    },
+                )
             )
             tasks.append(task)
         res = await asyncio.gather(*tasks, return_exceptions=True)
