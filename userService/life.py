@@ -13,8 +13,11 @@ async def life(app: FastAPI):
 
     try:
         logger.info("开始连接数据库:mysql+redis")
-        mysql_client = await MysqlManager.init("userservice")
-        redis_client = await RedisManager.init(db=0)
+        task1 = asyncio.create_task(MysqlManager.init("userservice"))
+        task2 = asyncio.create_task(RedisManager.init(db=0))
+        mysql_client, redis_client = await asyncio.gather(
+            task1, task2, return_exceptions=True
+        )
         app.state.mysql_pool = mysql_client
         app.state.redis_client = redis_client
         await service.service_register("userService", "127.0.0.1", 8000)

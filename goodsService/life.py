@@ -74,8 +74,9 @@ async def lifespan(app: FastAPI):
 
     try:
         logger.info("连接数据库:mysql+redis")
-        mysql_client = await MysqlManager.init("goodsservice")
-        redis_client = await RedisManager.init(db=1)
+        task1 = asyncio.create_task(MysqlManager.init("goodsservice"))
+        task2 = asyncio.create_task(RedisManager.init(db=1))
+        mysql_client, redis_client = await asyncio.gather(task1, task2)
         app.state.mysql_client = mysql_client
         app.state.redis_client = redis_client
         # 异步启动

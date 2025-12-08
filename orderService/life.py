@@ -14,8 +14,9 @@ async def life(app: FastAPI):
     logger.info("orderservice服务开始启动")
     try:
         logger.info("开始连接数据库")
-        mysql_client = await MysqlManager.init("orderservice")
-        redis_client = await RedisManager.init(db=2)
+        task1 = asyncio.create_task(MysqlManager.init("orderservice"))
+        task2 = asyncio.create_task(RedisManager.init(db=2))
+        mysql_client, redis_client = await asyncio.gather(task1, task2)
         app.state.mysql_pool = mysql_client
         app.state.redis_client = redis_client
         await service.service_register("orderService", "127.0.0.1", 8002)
