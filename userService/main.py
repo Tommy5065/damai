@@ -4,8 +4,7 @@ from fastapi.security import OAuth2AuthorizationCodeBearer, OAuth2PasswordReques
 from typing import Optional, Annotated
 from pydantic import EmailStr
 from passlib.hash import pbkdf2_sha256
-from threading import Timer
-import redis
+import asyncio
 from utils.log import logger
 from utils.userjwt import generateToken, validToken
 from .schema import Register, Token, MessageOut, CheckInfoOut, userIDOut, userIdenIDOut
@@ -47,11 +46,10 @@ async def get_mq():
     yield mq.conn
 
 
-def secondDeleteRedis(userID):
-    r = redis.Redis(host="localhost", port=6379, db=0, password=123456)
+async def secondDeleteRedis(userID: int, sleepTime: int, redis=object):
     logger.info("第二次删除redis")
-    r.delete(f"userservice:{userID}")
-    r.close()
+    await asyncio.sleep(sleepTime)
+    await redis.deleteCache(redis, f"userservice:{userID}")
 
 
 @user_service.post("/user/register", response_model=MessageOut)
@@ -216,8 +214,7 @@ async def update(
         await db.updateMysqlUser(db, sql, param=tuple(params))
 
     # 再次删除缓存,延迟双删
-    t = Timer(2, secondDeleteRedis, args=(userID,))
-    t.start()
+    asyncio.create_task(secondDeleteRedis(userID, 2, redis=Depends(get_redis)))
     return MessageOut(message="修改成功")
 
 
