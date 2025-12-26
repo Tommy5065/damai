@@ -1,6 +1,4 @@
 import aiomysql
-import asyncio
-from utils.sendemail import sendEmail
 from utils.log import logger
 
 
@@ -69,17 +67,3 @@ class MysqlManager(object):
         await self.cursor.close()
         self.pool.close()
         await self.pool.wait_closed()
-
-
-async def registerMysqlUserSendEmail(
-    connObject: object, sql: str, email: str, param: tuple
-) -> bool:
-    task = await asyncio.gather(
-        MysqlManager.registerMysqlUser(connObject=connObject, sql=sql, param=param),
-        sendEmail(email),
-        return_exceptions=True,
-    )
-    logger.info(task)
-    if task[0] is True and task[1] is True:
-        return task
-    return False

@@ -43,14 +43,14 @@ async def createOrder(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="用户未填身份证信息"
             )
-        return CreateOrder(idenID=idenID, userID=userID, goodsInfo=goodsInfo)
+        return CreateOrder(idenID=idenID, userID=userID["userid"], goodsInfo=goodsInfo)
     except PermissionError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Redirect to login."
         )
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Service error:{e}",
         )
 

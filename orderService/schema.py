@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 class CreateOrder(BaseModel):
     idenID: str
-    userID: str
+    userID: int
     goodsInfo: Dict[str, Any]
 
 

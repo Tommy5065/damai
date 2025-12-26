@@ -7,8 +7,8 @@ from passlib.hash import pbkdf2_sha256
 import asyncio
 from utils.log import logger
 from utils.userjwt import generateToken, validToken
+from utils.sendemail import sendEmail
 from .schema import Register, Token, MessageOut, CheckInfoOut, userIDOut, userIdenIDOut
-from config.data_base import registerMysqlUserSendEmail
 from .life import life
 
 user_service = FastAPI(title="user-service", version="1.0.0", lifespan=life)
@@ -56,37 +56,41 @@ async def secondDeleteRedis(userID: int, sleepTime: int, redis=object):
 async def register(data: Register, tags=["user"], db=Depends(get_db)):
     """用户注册"""
     # 异步连接数据库，查询结果
-    if len(data.username) > 15:
-        raise HTTPException(
-            status_code=status.HTTP_406_NOT_ACCEPTABLE,
-            detail="username cannot over 15 charactar.",
-        )
+    try:
+        if len(data.username) > 15:
+            raise HTTPException(
+                status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                detail="username cannot over 15 charactar.",
+            )
 
-    name_exist = await db.getMysqlUser(
-        connObject=db,
-        sql=("select user_name from usertable where user_name=%s"),
-        param=(data.username,),
-    )
-    if name_exist:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="user has exist."
+        name_exist = await db.getMysqlUser(
+            connObject=db,
+            sql=("select user_name from usertable where user_name=%s"),
+            param=(data.username,),
         )
-    # 注册成功，celery发送邮件异步任务
-    password = pbkdf2_sha256.hash(data.password)
-    sql = "insert into usertable(user_name,user_email,password) values(%s,%s,%s)"
-    param = (
-        data.username,
-        data.email,
-        password,
-    )
-    result = await registerMysqlUserSendEmail(
-        connObject=db, sql=sql, param=param, email=data.email
-    )
-    if result:
-        return MessageOut(message="注册成功")
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="register fail."
-    )
+        if name_exist:
+            raise PermissionError
+        password = pbkdf2_sha256.hash(data.password)
+        sql = "insert into usertable(user_name,user_email,password) values(%s,%s,%s)"
+        param = (
+            data.username,
+            data.email,
+            password,
+        )
+        result = await db.registerMysqlUser(connObject=db, sql=sql, param=param)
+        if result:
+            asyncio.create_task(sendEmail(recipents=data.email))
+            return {"message": "register success"}
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="user has existed",
+        )
+    except Exception as e:
+        logger.error(e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="register fail"
+        )
 
 
 @user_service.post("/user/login", response_model=Token, tags=["user"])
@@ -98,10 +102,9 @@ async def login(loginData: OAuth2PasswordRequestForm = Depends(), db=Depends(get
         sql=("select password,user_id from usertable where user_name=%s"),
         param=(loginData.username),
     )
-
     if not mysqlPasswordAndUserID:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="用户不存在")
-    mysql_password, user_id = [*mysqlPasswordAndUserID]
+    mysql_password, user_id = [*(mysqlPasswordAndUserID[0])]
     if pbkdf2_sha256.verify(
         loginData.password, hash=mysql_password
     ):  # 登录成功给个OAuth
@@ -122,29 +125,34 @@ async def checkInfo(
     redis=Depends(get_redis),
 ):
     """用户查看信息"""
-    userID = await validToken(access_token)
-    # 缓存命中
-    logger.debug(f"{userID}号用户查询信息")
-    cache = await redis.getDataRedis(redis, key=f"userservice:{userID}")
-    if cache:
-        return cache
+    try:
+        userID = await validToken(access_token)
+        # 缓存命中
+        logger.debug(f"{userID}号用户查询信息")
+        cache = await redis.getDataRedis(redis, key=f"userservice:{userID}")
+        if cache:
+            return cache
 
-    logger.warning("数据未缓存,访问数据库")
-    detail_data = await db.checkMysqlUser(
-        connObject=db,
-        sql=("select user_name,user_email,iden_id from usertable where user_id=%s"),
-        param=(userID),
-    )
+        logger.warning("数据未缓存,访问数据库")
+        detail_data = await db.checkMysqlUser(
+            connObject=db,
+            sql=("select user_name,user_email,iden_id from usertable where user_id=%s"),
+            param=(userID),
+        )
 
-    user_name, email, iden_id = [*detail_data]
-    if iden_id is None:
-        iden_id = "null"
-    await redis.createCache(
-        redis,
-        f"userservice:{userID}",
-        map={"username": user_name, "email": email, "idenID": iden_id},
-    )
-    return {"username": user_name, "email": email, "idenID": iden_id}
+        user_name, email, iden_id = [*detail_data]
+        if iden_id is None:
+            iden_id = "null"
+        await redis.createCache(
+            redis,
+            f"userservice:{userID}",
+            map={"username": user_name, "email": email, "idenID": iden_id},
+        )
+        return {"username": user_name, "email": email, "idenID": iden_id}
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="please redirect login"
+        )
 
 
 @user_service.patch("/user/update/info", tags=["user"], response_model=MessageOut)
