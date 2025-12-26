@@ -1,16 +1,3 @@
-"""
-1.实现从数据库分页展示商品
-
-2.提前把热门数据在程序启动的时候缓存进redis用Lifsapn函数实现预热
-
-3.针对用户访问不存在的商品(缓存穿透)直接打到数据库上,使用短暂缓存空值策略(更好是用布隆过滤器,但是懒)
-
-4. 面对热点商品缓存击穿问题(数据库存在数据但是redis缓存过期了)[使用redis分布式锁]
-
-5. 抢票情况下怎么做到锁住一个线程操作[使用redis分布式锁]
-
-"""
-
 from fastapi import FastAPI, Query, status, HTTPException, Depends, Form, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Annotated
